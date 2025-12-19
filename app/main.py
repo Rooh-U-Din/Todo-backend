@@ -29,9 +29,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS origins - include both configured URL and common deployment domains
+cors_origins = [
+    settings.FRONTEND_URL,
+    "https://hackathon-ii-todo-spec-driven-devel.vercel.app",
+    "http://localhost:3000",
+]
+# Remove duplicates and empty strings
+cors_origins = [origin for origin in set(cors_origins) if origin]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
