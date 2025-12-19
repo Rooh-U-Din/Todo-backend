@@ -1,0 +1,48 @@
+"""FastAPI application entry point."""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import SQLModel
+
+from app.api.auth import router as auth_router
+from app.api.tasks import router as tasks_router
+from app.config import get_settings
+from app.db.session import engine
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create database tables on startup."""
+    # Import models to register them with SQLModel
+    from app.models import User, Task  # noqa: F401
+    SQLModel.metadata.create_all(engine)
+    yield
+
+app = FastAPI(
+    title="Todo Web Application API (Phase II)",
+    description="RESTful API for the Full-Stack Todo Web Application",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register routers
+app.include_router(auth_router)
+app.include_router(tasks_router)
+
+
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "healthy"}
