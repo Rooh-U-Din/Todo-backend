@@ -4,15 +4,14 @@ import re
 from datetime import datetime, timedelta
 from uuid import UUID
 
+import bcrypt
 from jose import jwt
-from passlib.context import CryptContext
 from sqlmodel import Session, select
 
 from app.config import get_settings
 from app.models.user import AuthResponse, User, UserCreate, UserResponse
 
 settings = get_settings()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Password policy regex: at least one uppercase, one lowercase, one digit
 PASSWORD_PATTERN = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$")
@@ -25,12 +24,16 @@ EMAIL_PATTERN = re.compile(
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def validate_email(email: str) -> bool:

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 from app.api.auth import router as auth_router
+from app.api.chat import router as chat_router
 from app.api.tasks import router as tasks_router
 from app.config import get_settings
 from app.db.session import engine
@@ -18,7 +19,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Create database tables on startup."""
     # Import models to register them with SQLModel
-    from app.models import User, Task  # noqa: F401
+    from app.models import Conversation, Message, Task, User  # noqa: F401
     SQLModel.metadata.create_all(engine)
     yield
 
@@ -48,6 +49,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(tasks_router)
 
 

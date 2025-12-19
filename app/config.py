@@ -17,6 +17,8 @@ class Settings:
         self.FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
         self.JWT_ALGORITHM: str = "HS256"
         self.JWT_EXPIRATION_HOURS: int = 24
+        # Phase III: AI Chatbot configuration (using Gemini)
+        self.GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
     def validate(self) -> None:
         """Validate that required environment variables are set."""
