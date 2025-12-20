@@ -35,6 +35,7 @@ cors_origins = [
     settings.FRONTEND_URL,
     "https://hackathon-ii-todo-spec-driven-devel.vercel.app",
     "http://localhost:3000",
+    "http://localhost:3001",
 ]
 # Remove duplicates and empty strings
 cors_origins = [origin for origin in set(cors_origins) if origin]
