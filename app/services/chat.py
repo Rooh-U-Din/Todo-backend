@@ -58,6 +58,7 @@ def _build_gemini_tools():
             "description": tool["description"],
             "parameters": tool["parameters"]
         })
+    logging.info(f"Built {len(functions)} Gemini tools: {[f['name'] for f in functions]}")
     return [{"function_declarations": functions}]
 
 
@@ -139,6 +140,7 @@ async def _process_with_function_calling(
     """Process message with Gemini function calling loop."""
 
     response = chat.send_message(message)
+    logging.info(f"Initial Gemini response parts: {[type(p).__name__ for p in response.parts]}")
 
     # Function calling loop
     turn_count = 0
@@ -148,12 +150,17 @@ async def _process_with_function_calling(
         # Check if there are function calls to process
         function_calls = []
         for part in response.parts:
+            logging.info(f"Part attributes: {[attr for attr in dir(part) if not attr.startswith('_')]}")
             if hasattr(part, 'function_call') and part.function_call:
+                logging.info(f"Found function_call: {part.function_call}")
                 function_calls.append(part.function_call)
 
         if not function_calls:
             # No function calls, return the text response
+            logging.info("No function calls in response, returning text")
             return _extract_text_response(response)
+
+        logging.info(f"Found {len(function_calls)} function call(s): {[fc.name for fc in function_calls]}")
 
         # Process all function calls
         function_responses = []
