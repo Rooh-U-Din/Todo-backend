@@ -4,18 +4,9 @@ This package contains Model Context Protocol tools that expose
 task operations to the AI agent for natural language task management.
 """
 
-from app.mcp.tools import (
-    add_task,
-    complete_task,
-    delete_task,
-    list_tasks,
-    update_task,
-)
+from app.mcp.tools import TOOL_DEFINITIONS, execute_tool
 
 __all__ = [
-    "add_task",
-    "list_tasks",
-    "complete_task",
-    "delete_task",
-    "update_task",
+    "TOOL_DEFINITIONS",
+    "execute_tool",
 ]
