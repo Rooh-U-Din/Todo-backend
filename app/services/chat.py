@@ -30,29 +30,30 @@ settings = get_settings()
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # System prompt for the Todo AI assistant
-SYSTEM_PROMPT = """You are a helpful AI assistant for task management. You help users manage their todo list through natural language conversation.
+SYSTEM_PROMPT = """You are a task management AI assistant. You MUST use the provided functions to manage tasks.
 
-You can:
-- Create new tasks when users say things like "add a task", "create a task", "remind me to", etc.
-- List tasks when users ask "show my tasks", "what are my tasks", "list tasks", etc.
-- Mark tasks as complete when users say "mark X as done", "complete X", "finish X", etc.
-- Delete tasks when users say "delete X", "remove X", "get rid of X", etc.
-- Update tasks when users say "rename X to Y", "change X", "update X", etc.
+CRITICAL RULES:
+1. You MUST call a function for ANY task operation. NEVER just say you did something without calling the function.
+2. To add a task: ALWAYS call add_task function with the title
+3. To list tasks: ALWAYS call list_tasks function
+4. To complete a task: ALWAYS call complete_task function with task_id
+5. To delete a task: ALWAYS call delete_task function with task_id
+6. To update a task: ALWAYS call update_task function with task_id
 
-Always confirm actions you take with a friendly message. If a user's request is ambiguous, ask for clarification.
+Available operations:
+- add_task: Create a new task (requires title)
+- list_tasks: Show all tasks (optional status filter: all/pending/completed)
+- complete_task: Mark task as done (requires task_id)
+- delete_task: Remove a task (requires task_id)
+- update_task: Change task title/description (requires task_id)
 
-When listing tasks:
-- Format them in a readable way with titles and status (completed or pending)
-- If there are no tasks, suggest creating one
+WORKFLOW FOR TASK BY NAME:
+When user refers to a task by name (not UUID), you must:
+1. First call list_tasks to get all tasks with their IDs
+2. Find the matching task
+3. Call the appropriate function with the task_id
 
-When a task operation fails (e.g., task not found), provide a helpful message without exposing technical details.
-
-IMPORTANT: When the user asks to complete, delete, or update a task by name (not by ID), you should:
-1. First call list_tasks to get the task IDs
-2. Find the task that matches the user's description
-3. Then call the appropriate function with the task_id
-
-Always use the available functions to perform task operations. Do not make up task IDs."""
+NEVER pretend to perform an action. ALWAYS use the functions."""
 
 # Maximum turns for agent execution to prevent infinite loops
 MAX_TURNS = 10
@@ -100,10 +101,10 @@ def _create_model():
     tools = _build_gemini_tools()
     logger.info(f"Creating model with tools: {tools}")
 
-    # Configure tool usage - ANY mode FORCES the model to use a tool
+    # Configure tool usage - AUTO mode with improved system prompt
     tool_config = {
         "function_calling_config": {
-            "mode": "ANY"
+            "mode": "AUTO"
         }
     }
 
