@@ -100,7 +100,7 @@ def _create_model():
     tools = _build_gemini_tools()
     logger.info(f"Creating model with tools: {tools}")
     return genai.GenerativeModel(
-        model_name="gemini-2.0-flash-lite",
+        model_name="gemini-2.5-flash-lite",
         tools=tools,
         system_instruction=SYSTEM_PROMPT,
     )
