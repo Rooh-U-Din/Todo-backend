@@ -101,10 +101,10 @@ def _create_model():
     tools = _build_gemini_tools()
     logger.info(f"Creating model with tools: {tools}")
 
-    # Configure tool usage - AUTO mode with improved system prompt
+    # Configure tool usage - ANY mode forces function calling
     tool_config = {
         "function_calling_config": {
-            "mode": "AUTO"
+            "mode": "ANY"
         }
     }
 
@@ -232,19 +232,9 @@ async def _process_with_function_calling(
                 "response": result,
             })
 
-        # Send function results back to Gemini
-        response_parts = []
-        for fr in function_responses:
-            response_parts.append(
-                genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=fr["name"],
-                        response={"result": fr["response"]}
-                    )
-                )
-            )
-
-        response = chat.send_message(response_parts)
+        # Generate user-friendly response based on function results
+        # Don't send back to Gemini (mode=ANY would force another function call)
+        return _generate_response_from_results(function_responses)
 
     # Max turns reached
     return _extract_text_response(response)
@@ -261,3 +251,56 @@ def _extract_text_response(response) -> str:
         return " ".join(text_parts)
 
     return "I've processed your request."
+
+
+def _generate_response_from_results(function_responses: list) -> str:
+    """Generate a user-friendly response from function execution results."""
+    messages = []
+
+    for fr in function_responses:
+        name = fr["name"]
+        result = fr["response"]
+
+        if name == "add_task":
+            if result.get("status") == "created":
+                messages.append(f"Created task: \"{result.get('title')}\"")
+            else:
+                messages.append(f"Failed to create task: {result.get('error', 'Unknown error')}")
+
+        elif name == "list_tasks":
+            tasks = result.get("tasks", [])
+            count = result.get("count", 0)
+            if count == 0:
+                messages.append("You have no tasks. Would you like to add one?")
+            else:
+                task_lines = []
+                for t in tasks:
+                    status = "✓" if t.get("is_completed") else "○"
+                    task_lines.append(f"  {status} {t.get('title')}")
+                messages.append(f"Your tasks ({count}):\n" + "\n".join(task_lines))
+
+        elif name == "complete_task":
+            if result.get("status") == "completed":
+                messages.append(f"Marked \"{result.get('title')}\" as completed!")
+            elif result.get("status") == "not_found":
+                messages.append("Task not found. Use 'list tasks' to see your tasks.")
+            else:
+                messages.append(f"Failed to complete task: {result.get('error', 'Unknown error')}")
+
+        elif name == "delete_task":
+            if result.get("status") == "deleted":
+                messages.append(f"Deleted task: \"{result.get('title')}\"")
+            elif result.get("status") == "not_found":
+                messages.append("Task not found. Use 'list tasks' to see your tasks.")
+            else:
+                messages.append(f"Failed to delete task: {result.get('error', 'Unknown error')}")
+
+        elif name == "update_task":
+            if result.get("status") == "updated":
+                messages.append(f"Updated task: \"{result.get('title')}\"")
+            elif result.get("status") == "not_found":
+                messages.append("Task not found. Use 'list tasks' to see your tasks.")
+            else:
+                messages.append(f"Failed to update task: {result.get('error', 'Unknown error')}")
+
+    return "\n".join(messages) if messages else "Done!"
