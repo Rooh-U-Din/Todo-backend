@@ -2,7 +2,16 @@
 
 import json
 import logging
+import sys
 from uuid import UUID
+
+# Configure logging to stdout for Railway
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 
 import google.generativeai as genai
 from sqlmodel import Session
@@ -58,7 +67,7 @@ def _build_gemini_tools():
             "description": tool["description"],
             "parameters": tool["parameters"]
         })
-    logging.info(f"Built {len(functions)} Gemini tools: {[f['name'] for f in functions]}")
+    logger.info(f"Built {len(functions)} Gemini tools: {[f['name'] for f in functions]}")
     return [{"function_declarations": functions}]
 
 
@@ -116,7 +125,7 @@ async def process_chat_message(
             session=session,
         )
     except Exception as e:
-        logging.error(f"AI agent error: {e}")
+        logger.error(f"AI agent error: {e}")
         ai_response = "I'm sorry, I'm having trouble processing your request right now. Please try again later."
 
     # Store AI response
@@ -140,7 +149,7 @@ async def _process_with_function_calling(
     """Process message with Gemini function calling loop."""
 
     response = chat.send_message(message)
-    logging.info(f"Initial Gemini response parts: {[type(p).__name__ for p in response.parts]}")
+    logger.info(f"Initial Gemini response parts: {[type(p).__name__ for p in response.parts]}")
 
     # Function calling loop
     turn_count = 0
@@ -150,17 +159,17 @@ async def _process_with_function_calling(
         # Check if there are function calls to process
         function_calls = []
         for part in response.parts:
-            logging.info(f"Part attributes: {[attr for attr in dir(part) if not attr.startswith('_')]}")
+            logger.info(f"Part attributes: {[attr for attr in dir(part) if not attr.startswith('_')]}")
             if hasattr(part, 'function_call') and part.function_call:
-                logging.info(f"Found function_call: {part.function_call}")
+                logger.info(f"Found function_call: {part.function_call}")
                 function_calls.append(part.function_call)
 
         if not function_calls:
             # No function calls, return the text response
-            logging.info("No function calls in response, returning text")
+            logger.info("No function calls in response, returning text")
             return _extract_text_response(response)
 
-        logging.info(f"Found {len(function_calls)} function call(s): {[fc.name for fc in function_calls]}")
+        logger.info(f"Found {len(function_calls)} function call(s): {[fc.name for fc in function_calls]}")
 
         # Process all function calls
         function_responses = []
@@ -168,7 +177,7 @@ async def _process_with_function_calling(
             tool_name = fc.name
             args = dict(fc.args) if fc.args else {}
 
-            logging.info(f"Executing tool: {tool_name} with args: {args}")
+            logger.info(f"Executing tool: {tool_name} with args: {args}")
 
             # Execute the tool
             result = execute_tool(
@@ -178,7 +187,7 @@ async def _process_with_function_calling(
                 session=session,
             )
 
-            logging.info(f"Tool result: {result}")
+            logger.info(f"Tool result: {result}")
 
             function_responses.append({
                 "name": tool_name,
