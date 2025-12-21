@@ -60,22 +60,48 @@ MAX_TURNS = 10
 
 def _build_gemini_tools():
     """Convert tool definitions to Gemini function declarations."""
-    functions = []
+    function_declarations = []
     for tool in TOOL_DEFINITIONS:
-        functions.append({
-            "name": tool["name"],
-            "description": tool["description"],
-            "parameters": tool["parameters"]
-        })
-    logger.info(f"Built {len(functions)} Gemini tools: {[f['name'] for f in functions]}")
-    return [{"function_declarations": functions}]
+        # Build proper Schema for parameters
+        properties = {}
+        required = tool["parameters"].get("required", [])
+
+        for prop_name, prop_def in tool["parameters"].get("properties", {}).items():
+            prop_schema = genai.protos.Schema(
+                type=genai.protos.Type.STRING,
+                description=prop_def.get("description", "")
+            )
+            # Handle enum type
+            if "enum" in prop_def:
+                prop_schema = genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    enum=prop_def["enum"],
+                    description=prop_def.get("description", "")
+                )
+            properties[prop_name] = prop_schema
+
+        func_decl = genai.protos.FunctionDeclaration(
+            name=tool["name"],
+            description=tool["description"],
+            parameters=genai.protos.Schema(
+                type=genai.protos.Type.OBJECT,
+                properties=properties,
+                required=required
+            ) if properties else None
+        )
+        function_declarations.append(func_decl)
+
+    logger.info(f"Built {len(function_declarations)} Gemini tools: {[f.name for f in function_declarations]}")
+    return [genai.protos.Tool(function_declarations=function_declarations)]
 
 
 def _create_model():
     """Create a Gemini model with function calling enabled."""
+    tools = _build_gemini_tools()
+    logger.info(f"Creating model with tools: {tools}")
     return genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite",
-        tools=_build_gemini_tools(),
+        model_name="gemini-2.0-flash",
+        tools=tools,
         system_instruction=SYSTEM_PROMPT,
     )
 
