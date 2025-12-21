@@ -77,6 +77,9 @@ def create_message(
     content: str,
 ) -> Message:
     """Store a new message and update conversation timestamp."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     message = Message(
         conversation_id=conversation_id,
         user_id=user_id,
@@ -84,6 +87,7 @@ def create_message(
         content=content,
     )
     session.add(message)
+    logger.info(f"Saving message: conversation={conversation_id}, role={role}, content={content[:50]}...")
 
     # Update conversation timestamp
     conversation = session.get(Conversation, conversation_id)
@@ -104,7 +108,10 @@ def get_messages_by_conversation(
     offset: int = 0,
 ) -> list[Message]:
     """Get messages for a conversation, with pagination."""
-    return list(
+    import logging
+    logger = logging.getLogger(__name__)
+
+    messages = list(
         session.exec(
             select(Message)
             .where(
@@ -116,3 +123,5 @@ def get_messages_by_conversation(
             .limit(limit)
         ).all()
     )
+    logger.info(f"Fetching messages: conversation={conversation_id}, user={user_id}, found={len(messages)}")
+    return messages
