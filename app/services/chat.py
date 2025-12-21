@@ -99,9 +99,18 @@ def _create_model():
     """Create a Gemini model with function calling enabled."""
     tools = _build_gemini_tools()
     logger.info(f"Creating model with tools: {tools}")
+
+    # Configure tool usage - AUTO mode allows model to decide when to use tools
+    tool_config = {
+        "function_calling_config": {
+            "mode": "AUTO"
+        }
+    }
+
     return genai.GenerativeModel(
         model_name="gemini-2.5-flash-lite",
         tools=tools,
+        tool_config=tool_config,
         system_instruction=SYSTEM_PROMPT,
     )
 
@@ -173,6 +182,7 @@ async def _process_with_function_calling(
     session: Session,
 ) -> str:
     """Process message with Gemini function calling loop."""
+    logger.info(f"Sending message to Gemini: '{message}'")
 
     response = chat.send_message(message)
     logger.info(f"Initial Gemini response parts: {[type(p).__name__ for p in response.parts]}")
@@ -192,8 +202,9 @@ async def _process_with_function_calling(
 
         if not function_calls:
             # No function calls, return the text response
-            logger.info("No function calls in response, returning text")
-            return _extract_text_response(response)
+            text_response = _extract_text_response(response)
+            logger.info(f"No function calls in response, returning text: {text_response[:200] if text_response else 'empty'}")
+            return text_response
 
         logger.info(f"Found {len(function_calls)} function call(s): {[fc.name for fc in function_calls]}")
 
