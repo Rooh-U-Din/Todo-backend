@@ -100,10 +100,10 @@ def _create_model():
     tools = _build_gemini_tools()
     logger.info(f"Creating model with tools: {tools}")
 
-    # Configure tool usage - AUTO mode allows model to decide when to use tools
+    # Configure tool usage - ANY mode FORCES the model to use a tool
     tool_config = {
         "function_calling_config": {
-            "mode": "AUTO"
+            "mode": "ANY"
         }
     }
 
