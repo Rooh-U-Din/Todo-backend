@@ -92,14 +92,12 @@ def _build_gemini_tools():
         )
         function_declarations.append(func_decl)
 
-    logger.info(f"Built {len(function_declarations)} Gemini tools: {[f.name for f in function_declarations]}")
     return [genai.protos.Tool(function_declarations=function_declarations)]
 
 
 def _create_model():
     """Create a Gemini model with function calling enabled."""
     tools = _build_gemini_tools()
-    logger.info(f"Creating model with tools: {tools}")
 
     # Configure tool usage - ANY mode forces function calling
     tool_config = {
@@ -183,10 +181,7 @@ async def _process_with_function_calling(
     session: Session,
 ) -> str:
     """Process message with Gemini function calling loop."""
-    logger.info(f"Sending message to Gemini: '{message}'")
-
     response = chat.send_message(message)
-    logger.info(f"Initial Gemini response parts: {[type(p).__name__ for p in response.parts]}")
 
     # Function calling loop
     turn_count = 0
@@ -196,26 +191,18 @@ async def _process_with_function_calling(
         # Check if there are function calls to process
         function_calls = []
         for part in response.parts:
-            logger.info(f"Part attributes: {[attr for attr in dir(part) if not attr.startswith('_')]}")
             if hasattr(part, 'function_call') and part.function_call:
-                logger.info(f"Found function_call: {part.function_call}")
                 function_calls.append(part.function_call)
 
         if not function_calls:
             # No function calls, return the text response
-            text_response = _extract_text_response(response)
-            logger.info(f"No function calls in response, returning text: {text_response[:200] if text_response else 'empty'}")
-            return text_response
-
-        logger.info(f"Found {len(function_calls)} function call(s): {[fc.name for fc in function_calls]}")
+            return _extract_text_response(response)
 
         # Process all function calls
         function_responses = []
         for fc in function_calls:
             tool_name = fc.name
             args = dict(fc.args) if fc.args else {}
-
-            logger.info(f"Executing tool: {tool_name} with args: {args}")
 
             # Execute the tool
             result = execute_tool(
@@ -224,8 +211,6 @@ async def _process_with_function_calling(
                 user_id=user_id,
                 session=session,
             )
-
-            logger.info(f"Tool result: {result}")
 
             function_responses.append({
                 "name": tool_name,

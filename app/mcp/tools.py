@@ -118,7 +118,6 @@ def execute_tool(
     session: Session
 ) -> dict[str, Any]:
     """Execute a tool by name with the given arguments."""
-    logger.info(f"execute_tool called: tool={tool_name}, user_id={user_id}, args={args}")
 
     if tool_name == "add_task":
         return _add_task(
@@ -164,30 +163,20 @@ def _add_task(
     description: str | None = None
 ) -> dict[str, Any]:
     """Create a new task for the user."""
-    logger.info(f"MCP _add_task called: user_id={user_id}, title={title}")
     try:
-        user_uuid = UUID(user_id)
-        logger.info(f"Converted user_id to UUID: {user_uuid}")
-
         task_data = TaskCreate(title=title, description=description)
-        logger.info(f"Created TaskCreate: {task_data}")
-
         task = task_service.create_task(
             session=session,
-            user_id=user_uuid,
+            user_id=UUID(user_id),
             task_data=task_data,
         )
-        logger.info(f"Task created successfully: id={task.id}, user_id={task.user_id}")
-
         return {
             "task_id": str(task.id),
             "status": "created",
             "title": task.title,
         }
     except Exception as e:
-        logger.error(f"MCP _add_task FAILED: {type(e).__name__}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Failed to create task: {e}")
         return {
             "task_id": None,
             "status": "error",
@@ -202,7 +191,6 @@ def _list_tasks(
     status: str = "all"
 ) -> dict[str, Any]:
     """Get the user's tasks with optional filtering."""
-    logger.info(f"MCP _list_tasks called: user_id={user_id}, status={status}")
     try:
         # Convert status to completed filter
         completed = None
