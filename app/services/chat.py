@@ -183,6 +183,9 @@ async def _process_with_function_calling(
     """Process message with Gemini function calling loop."""
     response = chat.send_message(message)
 
+    # Track all function results for final response
+    all_function_responses = []
+
     # Function calling loop
     turn_count = 0
     while turn_count < MAX_TURNS:
@@ -195,14 +198,19 @@ async def _process_with_function_calling(
                 function_calls.append(part.function_call)
 
         if not function_calls:
-            # No function calls, return the text response
+            # No function calls - if we have accumulated results, return them
+            if all_function_responses:
+                return _generate_response_from_results(all_function_responses)
+            # Otherwise return the text response
             return _extract_text_response(response)
 
         # Process all function calls
-        function_responses = []
+        function_response_parts = []
         for fc in function_calls:
             tool_name = fc.name
             args = dict(fc.args) if fc.args else {}
+
+            logger.info(f"Executing tool: {tool_name} with args: {args}")
 
             # Execute the tool
             result = execute_tool(
@@ -212,17 +220,50 @@ async def _process_with_function_calling(
                 session=session,
             )
 
-            function_responses.append({
+            logger.info(f"Tool {tool_name} result: {result}")
+
+            all_function_responses.append({
                 "name": tool_name,
                 "response": result,
             })
 
-        # Generate user-friendly response based on function results
-        # Don't send back to Gemini (mode=ANY would force another function call)
-        return _generate_response_from_results(function_responses)
+            # Build function response for Gemini
+            function_response_parts.append(
+                genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=tool_name,
+                        response={"result": result}
+                    )
+                )
+            )
+
+        # Check if this was a mutation (not list_tasks) - return immediately
+        # For list_tasks, send results back to Gemini for follow-up actions
+        has_mutation = any(
+            fr["name"] in ("add_task", "complete_task", "delete_task", "update_task")
+            for fr in all_function_responses
+        )
+
+        if has_mutation:
+            # Mutation completed, return results to user
+            return _generate_response_from_results(all_function_responses)
+
+        # Send function results back to Gemini for potential follow-up calls
+        # This enables multi-step workflows like: list -> find -> complete
+        try:
+            response = chat.send_message(function_response_parts)
+            logger.info(f"Gemini response after function result: parts={len(response.parts)}")
+            for i, part in enumerate(response.parts):
+                if hasattr(part, 'function_call') and part.function_call:
+                    logger.info(f"  Part {i}: function_call={part.function_call.name}")
+                elif hasattr(part, 'text') and part.text:
+                    logger.info(f"  Part {i}: text={part.text[:100]}...")
+        except Exception as e:
+            logger.error(f"Error sending function response to Gemini: {e}")
+            return _generate_response_from_results(all_function_responses)
 
     # Max turns reached
-    return _extract_text_response(response)
+    return _generate_response_from_results(all_function_responses) if all_function_responses else _extract_text_response(response)
 
 
 def _extract_text_response(response) -> str:
@@ -261,7 +302,9 @@ def _generate_response_from_results(function_responses: list) -> str:
                 task_lines = []
                 for t in tasks:
                     status = "✓" if t.get("is_completed") else "○"
-                    task_lines.append(f"  {status} {t.get('title')}")
+                    # Include short ID for user reference
+                    short_id = t.get("id", "")[:8]
+                    task_lines.append(f"  {status} [{short_id}] {t.get('title')}")
                 messages.append(f"Your tasks ({count}):\n" + "\n".join(task_lines))
 
         elif name == "complete_task":
