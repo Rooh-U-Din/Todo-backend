@@ -9,6 +9,7 @@ from sqlmodel import SQLModel
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.tasks import router as tasks_router
+from app.api.tags import router as tags_router
 from app.config import get_settings
 from app.db.session import engine
 
@@ -19,7 +20,12 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Create database tables on startup."""
     # Import models to register them with SQLModel
-    from app.models import Conversation, Message, Task, User  # noqa: F401
+    from app.models import (  # noqa: F401
+        Conversation, Message, Task, User,
+        # Phase V models
+        TaskReminder, TaskTag, TaskTagAssociation,
+        TaskEvent, AuditLog, NotificationDelivery,
+    )
     SQLModel.metadata.create_all(engine)
     yield
 
@@ -52,6 +58,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(tasks_router)
+app.include_router(tags_router)
 
 
 @app.get("/health")

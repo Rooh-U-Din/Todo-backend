@@ -19,6 +19,21 @@ class Settings:
         self.JWT_EXPIRATION_HOURS: int = 24
         # Phase III: AI Chatbot configuration (using Gemini)
         self.GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+        # Phase V: Dapr configuration
+        self.DAPR_HTTP_PORT: int = int(os.getenv("DAPR_HTTP_PORT", "3500"))
+        self.DAPR_PUBSUB_NAME: str = os.getenv("DAPR_PUBSUB_NAME", "taskpubsub")
+        self.DAPR_TOPIC_NAME: str = os.getenv("DAPR_TOPIC_NAME", "task-events")
+        self.EVENTS_ENABLED: bool = os.getenv("EVENTS_ENABLED", "true").lower() == "true"
+
+        # Phase V Step 4: Worker configuration
+        self.WORKER_BATCH_SIZE: int = int(os.getenv("WORKER_BATCH_SIZE", "50"))
+        self.WORKER_MAX_RETRIES: int = int(os.getenv("WORKER_MAX_RETRIES", "3"))
+        self.WORKER_RETRY_DELAY_SECONDS: int = int(os.getenv("WORKER_RETRY_DELAY_SECONDS", "60"))
+        self.WORKER_POLL_INTERVAL_SECONDS: int = int(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "5"))
+
+        # Phase V Step 4: AI automation configuration
+        self.AI_AUTOMATION_ENABLED: bool = os.getenv("AI_AUTOMATION_ENABLED", "false").lower() == "true"
+        self.AI_CONFIDENCE_THRESHOLD: float = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.8"))
 
     def validate(self) -> None:
         """Validate that required environment variables are set."""
