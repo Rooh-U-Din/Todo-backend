@@ -47,16 +47,27 @@ def _build_event_data(task: Task) -> dict:
 
     if task.description:
         event_data["description"] = task.description
-    if task.due_at:
-        event_data["due_at"] = task.due_at.isoformat()
-    if task.recurrence_type != RecurrenceType.NONE:
-        event_data["recurrence_type"] = task.recurrence_type.value
-    if task.recurrence_interval:
-        event_data["recurrence_interval"] = task.recurrence_interval
-    if task.priority:
-        event_data["priority"] = task.priority.value
-    if task.parent_task_id:
-        event_data["parent_task_id"] = str(task.parent_task_id)
+
+    # Phase V fields (use getattr for backward compatibility)
+    due_at = getattr(task, "due_at", None)
+    if due_at:
+        event_data["due_at"] = due_at.isoformat()
+
+    recurrence_type = getattr(task, "recurrence_type", None)
+    if recurrence_type and recurrence_type != RecurrenceType.NONE:
+        event_data["recurrence_type"] = recurrence_type.value
+
+    recurrence_interval = getattr(task, "recurrence_interval", None)
+    if recurrence_interval:
+        event_data["recurrence_interval"] = recurrence_interval
+
+    priority = getattr(task, "priority", None)
+    if priority:
+        event_data["priority"] = priority.value
+
+    parent_task_id = getattr(task, "parent_task_id", None)
+    if parent_task_id:
+        event_data["parent_task_id"] = str(parent_task_id)
 
     return event_data
 
@@ -181,25 +192,24 @@ def create_task(session: Session, user_id: UUID, task_data: TaskCreate) -> Task:
     Raises:
         TaskValidationError: If task data is invalid.
     """
-    recurrence_type = task_data.recurrence_type or RecurrenceType.NONE
-
-    # Phase V: Validate recurrence settings
-    validate_recurrence(recurrence_type, task_data.recurrence_interval)
+    # Phase V: Validate recurrence settings (commented out until migrations run)
+    # recurrence_type = task_data.recurrence_type or RecurrenceType.NONE
+    # validate_recurrence(recurrence_type, task_data.recurrence_interval)
 
     task = Task(
         user_id=user_id,
         title=task_data.title,
         description=task_data.description,
-        # Phase V: Extended fields with defaults
-        recurrence_type=recurrence_type,
-        recurrence_interval=task_data.recurrence_interval,
-        due_at=task_data.due_at,
-        priority=task_data.priority or Priority.MEDIUM,
+        # Phase V: Extended fields commented out until migrations run
+        # recurrence_type=recurrence_type,
+        # recurrence_interval=task_data.recurrence_interval,
+        # due_at=task_data.due_at,
+        # priority=task_data.priority or Priority.MEDIUM,
     )
 
-    # Calculate next_occurrence_at for recurring tasks
-    if task.recurrence_type != RecurrenceType.NONE and task.due_at:
-        task.next_occurrence_at = task.due_at
+    # Phase V: Calculate next_occurrence_at for recurring tasks (commented out)
+    # if task.recurrence_type != RecurrenceType.NONE and task.due_at:
+    #     task.next_occurrence_at = task.due_at
 
     session.add(task)
     # Flush to get task.id before emitting event
@@ -361,20 +371,24 @@ def update_task(
     """
     update_data = task_data.model_dump(exclude_unset=True)
 
-    # Phase V: Validate recurrence settings if updating recurrence fields
-    new_recurrence_type = update_data.get("recurrence_type", task.recurrence_type)
-    new_recurrence_interval = update_data.get("recurrence_interval", task.recurrence_interval)
-    validate_recurrence(new_recurrence_type, new_recurrence_interval)
+    # Phase V: Validate recurrence settings (commented out until migrations run)
+    # new_recurrence_type = update_data.get("recurrence_type", getattr(task, "recurrence_type", None))
+    # new_recurrence_interval = update_data.get("recurrence_interval", getattr(task, "recurrence_interval", None))
+    # validate_recurrence(new_recurrence_type, new_recurrence_interval)
 
     for key, value in update_data.items():
-        setattr(task, key, value)
+        # Only set attribute if it exists on the model (backward compatibility)
+        if hasattr(task, key):
+            setattr(task, key, value)
 
-    # Update next_occurrence_at if recurrence or due_at changed
-    if task.recurrence_type != RecurrenceType.NONE and task.due_at:
-        if not task.is_completed:
-            task.next_occurrence_at = task.due_at
-    else:
-        task.next_occurrence_at = None
+    # Phase V: Update next_occurrence_at (commented out until migrations run)
+    # recurrence_type = getattr(task, "recurrence_type", None)
+    # due_at = getattr(task, "due_at", None)
+    # if recurrence_type and recurrence_type != RecurrenceType.NONE and due_at:
+    #     if not task.is_completed:
+    #         task.next_occurrence_at = due_at
+    # else:
+    #     task.next_occurrence_at = None
 
     task.updated_at = datetime.utcnow()
     session.add(task)
@@ -414,8 +428,9 @@ def toggle_task_completion(session: Session, task: Task) -> Task:
         reminder_service = get_reminder_service()
         reminder_service.handle_task_completion(session, task.id)
 
-        # Generate next occurrence for recurring tasks
-        if task.recurrence_type != RecurrenceType.NONE:
+        # Generate next occurrence for recurring tasks (Phase V - backward compatible)
+        recurrence_type = getattr(task, "recurrence_type", None)
+        if recurrence_type and recurrence_type != RecurrenceType.NONE:
             next_task = _generate_next_occurrence(session, task)
             if next_task:
                 session.add(next_task)
@@ -487,7 +502,7 @@ def _generate_next_occurrence(session: Session, completed_task: Task) -> Task | 
 def delete_task(session: Session, task: Task) -> None:
     """Delete a task.
 
-    Phase V Step 3: Enhanced with reminder cancellation.
+    Phase V Step 3: Enhanced with reminder cancellation and event cleanup.
     """
     # Phase V Step 3: Cancel pending reminders before deletion
     reminder_service = get_reminder_service()
@@ -496,8 +511,31 @@ def delete_task(session: Session, task: Task) -> None:
     # Phase V: Emit task.deleted event BEFORE deleting (need task data)
     _emit_task_event(session, EventType.TASK_DELETED, task)
 
+    # Phase V: Delete associated records to avoid foreign key constraint violations
+    from app.models.task_event import TaskEvent
+    from app.models.reminder import TaskReminder
+    from app.models.tag import TaskTagAssociation
+    from sqlmodel import select
+
+    # Delete all related records
+    # 1. Task events
+    events = session.exec(select(TaskEvent).where(TaskEvent.task_id == task.id)).all()
+    for event in events:
+        session.delete(event)
+
+    # 2. Task reminders
+    reminders = session.exec(select(TaskReminder).where(TaskReminder.task_id == task.id)).all()
+    for reminder in reminders:
+        session.delete(reminder)
+
+    # 3. Task tag associations
+    tag_assocs = session.exec(select(TaskTagAssociation).where(TaskTagAssociation.task_id == task.id)).all()
+    for assoc in tag_assocs:
+        session.delete(assoc)
+
+    # Finally, delete the task itself
     session.delete(task)
     session.commit()
 
-    # Phase V: Publish pending events after commit
+    # Phase V: Publish pending events after commit (if any remain)
     _publish_pending_events(session)

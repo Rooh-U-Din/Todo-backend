@@ -248,6 +248,13 @@ async def _process_with_function_calling(
             # Mutation completed, return results to user
             return _generate_response_from_results(all_function_responses)
 
+        # If only list_tasks was called and we've already done 2+ turns, return
+        # This prevents the AI from making multiple list_tasks calls
+        only_list_tasks = all(fr["name"] == "list_tasks" for fr in all_function_responses)
+        if only_list_tasks and turn_count >= 2:
+            logger.info(f"Returning after {turn_count} list_tasks calls to prevent duplicates")
+            return _generate_response_from_results(all_function_responses)
+
         # Send function results back to Gemini for potential follow-up calls
         # This enables multi-step workflows like: list -> find -> complete
         try:
@@ -280,10 +287,19 @@ def _extract_text_response(response) -> str:
 
 
 def _generate_response_from_results(function_responses: list) -> str:
-    """Generate a user-friendly response from function execution results."""
+    """Generate a user-friendly response from function execution results.
+
+    Only shows the LAST result for each tool type to avoid duplicates when
+    the AI makes multiple calls to the same tool.
+    """
+    # Keep only the last result for each tool name to avoid duplicates
+    seen_tools = {}
+    for fr in function_responses:
+        seen_tools[fr["name"]] = fr
+
     messages = []
 
-    for fr in function_responses:
+    for fr in seen_tools.values():
         name = fr["name"]
         result = fr["response"]
 
