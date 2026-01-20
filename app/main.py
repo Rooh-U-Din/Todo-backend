@@ -3,9 +3,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel import SQLModel
 
 from app.api.auth import router as auth_router
@@ -66,16 +67,41 @@ app.include_router(tasks_router)
 app.include_router(tags_router)
 
 
+def _get_cors_headers(request: Request) -> dict[str, str]:
+    """Get CORS headers for the request origin if allowed."""
+    origin = request.headers.get("origin", "")
+    if origin in cors_origins:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    return {}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """HTTP exception handler with CORS headers."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=_get_cors_headers(request),
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Global exception handler to ensure CORS headers on all error responses.
 
     This prevents CORS errors from masking the actual server error.
+    Explicitly includes CORS headers for cross-origin error visibility.
     """
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
+        headers=_get_cors_headers(request),
     )
 
 

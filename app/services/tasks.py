@@ -192,24 +192,24 @@ def create_task(session: Session, user_id: UUID, task_data: TaskCreate) -> Task:
     Raises:
         TaskValidationError: If task data is invalid.
     """
-    # Phase V: Validate recurrence settings (commented out until migrations run)
-    # recurrence_type = task_data.recurrence_type or RecurrenceType.NONE
-    # validate_recurrence(recurrence_type, task_data.recurrence_interval)
+    # Phase V: Validate recurrence settings
+    recurrence_type = task_data.recurrence_type or RecurrenceType.NONE
+    validate_recurrence(recurrence_type, task_data.recurrence_interval)
 
     task = Task(
         user_id=user_id,
         title=task_data.title,
         description=task_data.description,
-        # Phase V: Extended fields commented out until migrations run
-        # recurrence_type=recurrence_type,
-        # recurrence_interval=task_data.recurrence_interval,
-        # due_at=task_data.due_at,
-        # priority=task_data.priority or Priority.MEDIUM,
+        # Phase V: Extended fields
+        recurrence_type=recurrence_type,
+        recurrence_interval=task_data.recurrence_interval,
+        due_at=task_data.due_at,
+        priority=task_data.priority or Priority.MEDIUM,
     )
 
-    # Phase V: Calculate next_occurrence_at for recurring tasks (commented out)
-    # if task.recurrence_type != RecurrenceType.NONE and task.due_at:
-    #     task.next_occurrence_at = task.due_at
+    # Phase V: Calculate next_occurrence_at for recurring tasks
+    if task.recurrence_type != RecurrenceType.NONE and task.due_at:
+        task.next_occurrence_at = task.due_at
 
     session.add(task)
     # Flush to get task.id before emitting event
@@ -371,24 +371,22 @@ def update_task(
     """
     update_data = task_data.model_dump(exclude_unset=True)
 
-    # Phase V: Validate recurrence settings (commented out until migrations run)
-    # new_recurrence_type = update_data.get("recurrence_type", getattr(task, "recurrence_type", None))
-    # new_recurrence_interval = update_data.get("recurrence_interval", getattr(task, "recurrence_interval", None))
-    # validate_recurrence(new_recurrence_type, new_recurrence_interval)
+    # Phase V: Validate recurrence settings
+    new_recurrence_type = update_data.get("recurrence_type", task.recurrence_type)
+    new_recurrence_interval = update_data.get("recurrence_interval", task.recurrence_interval)
+    validate_recurrence(new_recurrence_type, new_recurrence_interval)
 
     for key, value in update_data.items():
         # Only set attribute if it exists on the model (backward compatibility)
         if hasattr(task, key):
             setattr(task, key, value)
 
-    # Phase V: Update next_occurrence_at (commented out until migrations run)
-    # recurrence_type = getattr(task, "recurrence_type", None)
-    # due_at = getattr(task, "due_at", None)
-    # if recurrence_type and recurrence_type != RecurrenceType.NONE and due_at:
-    #     if not task.is_completed:
-    #         task.next_occurrence_at = due_at
-    # else:
-    #     task.next_occurrence_at = None
+    # Phase V: Update next_occurrence_at
+    if task.recurrence_type and task.recurrence_type != RecurrenceType.NONE and task.due_at:
+        if not task.is_completed:
+            task.next_occurrence_at = task.due_at
+    else:
+        task.next_occurrence_at = None
 
     task.updated_at = datetime.utcnow()
     session.add(task)

@@ -45,14 +45,13 @@ class Task(TaskBase, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Phase V: Extended fields (commented out until migrations are run)
-    # Uncomment after running: alembic upgrade head
-    # recurrence_type: RecurrenceType | None = Field(default=RecurrenceType.NONE, nullable=True)
-    # recurrence_interval: int | None = Field(default=None, nullable=True)  # Days for custom recurrence
-    # next_occurrence_at: datetime | None = Field(default=None, nullable=True)
-    # due_at: datetime | None = Field(default=None, index=True, nullable=True)
-    # priority: Priority | None = Field(default=Priority.MEDIUM, nullable=True)
-    # parent_task_id: UUID | None = Field(default=None, foreign_key="tasks.id", nullable=True)
+    # Phase V: Extended fields (enabled after migration)
+    recurrence_type: RecurrenceType | None = Field(default=RecurrenceType.NONE, nullable=True)
+    recurrence_interval: int | None = Field(default=None, nullable=True)  # Days for custom recurrence
+    next_occurrence_at: datetime | None = Field(default=None, nullable=True)
+    due_at: datetime | None = Field(default=None, index=True, nullable=True)
+    priority: Priority | None = Field(default=Priority.MEDIUM, nullable=True)
+    parent_task_id: UUID | None = Field(default=None, foreign_key="tasks.id", nullable=True)
 
     user: "User" = Relationship(back_populates="tasks")
 
@@ -91,13 +90,13 @@ class TaskResponse(SQLModel):
     is_completed: bool
     created_at: datetime
     updated_at: datetime
-    # Phase V: Extended fields (commented out until migrations are run)
-    # recurrence_type: RecurrenceType
-    # recurrence_interval: int | None
-    # next_occurrence_at: datetime | None
-    # due_at: datetime | None
-    # priority: Priority
-    # parent_task_id: UUID | None
+    # Phase V: Extended fields (enabled after migration)
+    recurrence_type: RecurrenceType | None = None
+    recurrence_interval: int | None = None
+    next_occurrence_at: datetime | None = None
+    due_at: datetime | None = None
+    priority: Priority | None = None
+    parent_task_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 

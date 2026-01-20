@@ -3,10 +3,12 @@
 Phase V Step 5: Extended with reminders, tags, and advanced filtering.
 """
 
+import asyncio
+import logging
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DBSession
@@ -23,14 +25,65 @@ from app.services.tasks import (
     toggle_task_completion,
     update_task,
 )
-from app.services.reminders import get_reminder_service
+from app.services.reminders import get_reminder_service, get_dapr_jobs_client
 from app.services.tags import (
     TagNotFoundError,
     assign_tags_to_task,
     get_task_tags,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
+
+
+# =============================================================================
+# Dapr Jobs Background Task Helpers (Phase V T069c-d)
+# =============================================================================
+
+
+def _schedule_dapr_job_background(
+    reminder_id: UUID,
+    task_id: UUID,
+    user_id: UUID,
+    remind_at: datetime,
+) -> None:
+    """Background task to schedule a Dapr job for reminder.
+
+    This runs the async Dapr Jobs client in a new event loop.
+    """
+    try:
+        client = get_dapr_jobs_client()
+        job_id = asyncio.run(
+            client.schedule_reminder_job(
+                reminder_id=reminder_id,
+                task_id=task_id,
+                user_id=user_id,
+                remind_at=remind_at,
+            )
+        )
+        if job_id:
+            logger.info(f"Dapr job scheduled: {job_id} for reminder {reminder_id}")
+        else:
+            logger.warning(f"Dapr job scheduling returned None for reminder {reminder_id}")
+    except Exception as e:
+        logger.error(f"Failed to schedule Dapr job for reminder {reminder_id}: {e}")
+
+
+def _cancel_dapr_job_background(reminder_id: UUID) -> None:
+    """Background task to cancel a Dapr job for reminder.
+
+    This runs the async Dapr Jobs client in a new event loop.
+    """
+    try:
+        client = get_dapr_jobs_client()
+        success = asyncio.run(client.cancel_reminder_job(reminder_id))
+        if success:
+            logger.info(f"Dapr job cancelled for reminder {reminder_id}")
+        else:
+            logger.warning(f"Failed to cancel Dapr job for reminder {reminder_id}")
+    except Exception as e:
+        logger.error(f"Error cancelling Dapr job for reminder {reminder_id}: {e}")
 
 
 class TagAssignment(BaseModel):
@@ -188,10 +241,12 @@ def create_reminder_endpoint(
     current_user: CurrentUser,
     task_id: UUID,
     reminder_data: ReminderCreate,
+    background_tasks: BackgroundTasks,
 ) -> ReminderResponse:
     """Create a reminder for a task.
 
     If a reminder already exists, it will be replaced.
+    Schedules a Dapr job to trigger the reminder at the specified time.
     """
     task = get_task_by_id(session, current_user.id, task_id)
     if task is None:
@@ -215,6 +270,15 @@ def create_reminder_endpoint(
     )
     session.commit()
 
+    # T069c: Schedule Dapr job for reminder notification
+    background_tasks.add_task(
+        _schedule_dapr_job_background,
+        reminder_id=reminder.id,
+        task_id=task.id,
+        user_id=current_user.id,
+        remind_at=reminder_data.remind_at,
+    )
+
     return ReminderResponse.model_validate(reminder)
 
 
@@ -223,8 +287,12 @@ def delete_reminder_endpoint(
     session: DBSession,
     current_user: CurrentUser,
     task_id: UUID,
+    background_tasks: BackgroundTasks,
 ) -> None:
-    """Cancel all pending reminders for a task."""
+    """Cancel all pending reminders for a task.
+
+    Also cancels any scheduled Dapr jobs for the reminders.
+    """
     task = get_task_by_id(session, current_user.id, task_id)
     if task is None:
         raise HTTPException(
@@ -232,9 +300,22 @@ def delete_reminder_endpoint(
             detail="Task not found",
         )
 
+    # T069d: Get pending reminders before cancelling to cancel their Dapr jobs
     reminder_service = get_reminder_service()
+    pending_reminders = reminder_service.get_upcoming_reminders(
+        session, current_user.id, within_hours=24*365
+    )
+    reminder_ids_to_cancel = [
+        r.id for r in pending_reminders if r.task_id == task_id
+    ]
+
+    # Cancel reminders in database
     reminder_service.cancel_task_reminders(session, task.id)
     session.commit()
+
+    # T069d: Cancel Dapr jobs for each reminder
+    for reminder_id in reminder_ids_to_cancel:
+        background_tasks.add_task(_cancel_dapr_job_background, reminder_id)
 
 
 @router.get("/{task_id}/reminder", response_model=ReminderResponse | None)

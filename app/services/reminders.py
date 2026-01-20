@@ -504,6 +504,194 @@ class ReminderService:
 
 
 # -----------------------------------------------------------------------------
+# Dapr Jobs Integration (Phase V T069)
+# -----------------------------------------------------------------------------
+
+import httpx
+import os
+
+# Dapr configuration
+DAPR_HTTP_PORT = int(os.getenv("DAPR_HTTP_PORT", "3500"))
+DAPR_JOBS_ENABLED = os.getenv("DAPR_JOBS_ENABLED", "false").lower() == "true"
+PUBSUB_NAME = os.getenv("PUBSUB_NAME", "taskpubsub")
+REMINDERS_TOPIC = "reminders"
+
+
+class DaprJobsClient:
+    """Client for Dapr Jobs API.
+
+    Dapr Jobs allows scheduling one-time or recurring jobs that trigger
+    at specific times. Used for scheduling reminder notifications.
+    """
+
+    def __init__(self, dapr_port: int = DAPR_HTTP_PORT):
+        self.base_url = f"http://localhost:{dapr_port}"
+        self.jobs_url = f"{self.base_url}/v1.0-alpha1/jobs"
+        self.enabled = DAPR_JOBS_ENABLED
+
+    async def schedule_reminder_job(
+        self,
+        reminder_id: UUID,
+        task_id: UUID,
+        user_id: UUID,
+        remind_at: datetime,
+    ) -> str | None:
+        """Schedule a Dapr job to trigger a reminder at the specified time.
+
+        Args:
+            reminder_id: The reminder ID
+            task_id: The associated task ID
+            user_id: The user ID
+            remind_at: When to trigger the reminder
+
+        Returns:
+            str: The Dapr job ID, or None if scheduling failed
+        """
+        if not self.enabled:
+            logger.debug("Dapr Jobs disabled, skipping schedule")
+            return None
+
+        job_id = f"reminder-{reminder_id}"
+
+        # Calculate schedule time in RFC3339 format
+        schedule_time = remind_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Job payload
+        job_data = {
+            "reminder_id": str(reminder_id),
+            "task_id": str(task_id),
+            "user_id": str(user_id),
+            "type": "reminder.due",
+        }
+
+        job_spec = {
+            "schedule": f"@once({schedule_time})",
+            "data": job_data,
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.jobs_url}/{job_id}",
+                    json=job_spec,
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+
+                logger.info(
+                    "Dapr job scheduled",
+                    extra={
+                        "job_id": job_id,
+                        "reminder_id": str(reminder_id),
+                        "schedule_time": schedule_time,
+                    },
+                )
+                return job_id
+
+        except httpx.HTTPError as e:
+            logger.error(
+                "Failed to schedule Dapr job",
+                extra={"error": str(e), "reminder_id": str(reminder_id)},
+            )
+            return None
+
+    async def cancel_reminder_job(
+        self,
+        reminder_id: UUID,
+    ) -> bool:
+        """Cancel a scheduled Dapr job for a reminder.
+
+        Args:
+            reminder_id: The reminder ID
+
+        Returns:
+            bool: True if cancelled successfully
+        """
+        if not self.enabled:
+            logger.debug("Dapr Jobs disabled, skipping cancel")
+            return True
+
+        job_id = f"reminder-{reminder_id}"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{self.jobs_url}/{job_id}",
+                    timeout=10.0,
+                )
+                # 404 is OK - job may have already been triggered
+                if response.status_code == 404:
+                    logger.debug(
+                        "Dapr job not found (may have already triggered)",
+                        extra={"job_id": job_id},
+                    )
+                    return True
+
+                response.raise_for_status()
+
+                logger.info(
+                    "Dapr job cancelled",
+                    extra={"job_id": job_id, "reminder_id": str(reminder_id)},
+                )
+                return True
+
+        except httpx.HTTPError as e:
+            logger.error(
+                "Failed to cancel Dapr job",
+                extra={"error": str(e), "reminder_id": str(reminder_id)},
+            )
+            return False
+
+    async def get_job_status(
+        self,
+        reminder_id: UUID,
+    ) -> dict | None:
+        """Get the status of a scheduled Dapr job.
+
+        Args:
+            reminder_id: The reminder ID
+
+        Returns:
+            dict: Job status or None if not found
+        """
+        if not self.enabled:
+            return None
+
+        job_id = f"reminder-{reminder_id}"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.jobs_url}/{job_id}",
+                    timeout=10.0,
+                )
+                if response.status_code == 404:
+                    return None
+
+                response.raise_for_status()
+                return response.json()
+
+        except httpx.HTTPError as e:
+            logger.error(
+                "Failed to get Dapr job status",
+                extra={"error": str(e), "reminder_id": str(reminder_id)},
+            )
+            return None
+
+
+# Singleton Dapr Jobs client
+_dapr_jobs_client: DaprJobsClient | None = None
+
+
+def get_dapr_jobs_client() -> DaprJobsClient:
+    """Get or create the Dapr Jobs client singleton."""
+    global _dapr_jobs_client
+    if _dapr_jobs_client is None:
+        _dapr_jobs_client = DaprJobsClient()
+    return _dapr_jobs_client
+
+
+# -----------------------------------------------------------------------------
 # Singleton Service Instance
 # -----------------------------------------------------------------------------
 
